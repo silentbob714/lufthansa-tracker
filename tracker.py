@@ -75,30 +75,49 @@ try:
         )
 
 
-        altitude = (
+        altitude_ft = (
             round(state[7] * 3.28084)
             if isinstance(state[7], (int, float))
             else None
         )
 
-
-        speed = (
+        speed_kts = (
             round(state[9] * 1.94384)
             if isinstance(state[9], (int, float))
             else None
         )
 
 
-        lat = state[6]
-        lon = state[5]
+        latitude = state[6]
+        longitude = state[5]
+
+
+        altitude_text = (
+            f"{altitude_ft:,} ft"
+            if altitude_ft
+            else "Unknown"
+        )
+
+        speed_text = (
+            f"{speed_kts} kts"
+            if speed_kts
+            else "Unknown"
+        )
+
+        position_text = (
+            f"{latitude:.3f}, {longitude:.3f}"
+            if latitude and longitude
+            else "Unknown"
+        )
 
 
         status.append(
             f"🟢 **{registration}**\n"
             f"{aircraft_type}\n"
             f"Flight: `{callsign}`\n"
-            f"Altitude: `{altitude:,} ft`" if altitude else
-            f"Altitude: `Unknown`"
+            f"Altitude: `{altitude_text}`\n"
+            f"Speed: `{speed_text}`\n"
+            f"Position: `{position_text}`"
         )
 
 
@@ -118,5 +137,7 @@ message = (
 
 requests.post(
     WEBHOOK,
-    json={"content": message}
+    json={
+        "content": message
+    }
 )
