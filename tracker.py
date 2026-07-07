@@ -3,7 +3,6 @@ import yaml
 import requests
 from datetime import datetime, timezone
 
-
 from datasource import get_aircraft_positions
 
 
@@ -26,7 +25,6 @@ def get_location_name(latitude, longitude):
         return "Unknown"
 
 
-    # Frankfurt Airport
     if (
         49.9 < latitude < 50.2
         and 8.3 < longitude < 8.8
@@ -34,7 +32,6 @@ def get_location_name(latitude, longitude):
         return "Frankfurt Airport area (FRA)"
 
 
-    # Los Angeles Airport
     if (
         33.8 < latitude < 34.1
         and -118.5 < longitude < -118.2
@@ -42,7 +39,6 @@ def get_location_name(latitude, longitude):
         return "Los Angeles Airport area (LAX)"
 
 
-    # Munich Airport
     if (
         48.2 < latitude < 48.5
         and 11.4 < longitude < 11.8
@@ -50,7 +46,6 @@ def get_location_name(latitude, longitude):
         return "Munich Airport area (MUC)"
 
 
-    # Europe general
     if (
         35 < latitude < 60
         and -10 < longitude < 40
@@ -58,7 +53,6 @@ def get_location_name(latitude, longitude):
         return "Europe"
 
 
-    # Atlantic
     if (
         -60 < longitude < -10
         and 20 < latitude < 70
@@ -66,11 +60,7 @@ def get_location_name(latitude, longitude):
         return "Atlantic Ocean"
 
 
-    # Pacific
-    if (
-        longitude < -100
-        and latitude > -50
-    ):
+    if longitude < -100:
         return "Pacific region"
 
 
@@ -100,27 +90,21 @@ for aircraft in fleet:
         continue
 
 
-
     data = positions[icao]
 
 
-    altitude_m = data["altitude"]
-    speed_ms = data["velocity"]
-
-
     altitude_ft = (
-        round(altitude_m * 3.28084)
-        if isinstance(altitude_m, (int, float))
+        round(data["altitude"] * 3.28084)
+        if isinstance(data["altitude"], (int, float))
         else 0
     )
 
 
     speed_kts = (
-        round(speed_ms * 1.94384)
-        if isinstance(speed_ms, (int, float))
+        round(data["velocity"] * 1.94384)
+        if isinstance(data["velocity"], (int, float))
         else 0
     )
-
 
 
     if altitude_ft > 1000:
@@ -128,18 +112,15 @@ for aircraft in fleet:
         icon = "🟢"
         aircraft_status = "Airborne"
 
-
     elif speed_kts > 80:
 
         icon = "🟢"
         aircraft_status = "Airborne transition"
 
-
     elif speed_kts > 5:
 
         icon = "🟡"
         aircraft_status = "Ground movement"
-
 
     else:
 
@@ -152,10 +133,11 @@ for aircraft in fleet:
 
     if not callsign or callsign == "Unknown":
 
-        if aircraft_status == "Ground movement":
-            callsign = "Ground operation"
-        else:
-            callsign = "Not transmitting"
+        callsign = (
+            "Ground operation"
+            if aircraft_status == "Ground movement"
+            else "Not transmitting"
+        )
 
 
 
@@ -185,35 +167,37 @@ for aircraft in fleet:
     else:
 
         position = "Unknown"
-        map_link = "Unavailable"
+        map_link = None
         location = "Unknown"
 
 
 
-    last_contact = data["last_contact"]
-
-
-    if last_contact:
+    if data["last_contact"]:
 
         age_seconds = (
             datetime.now(timezone.utc).timestamp()
             -
-            last_contact
+            data["last_contact"]
         )
 
 
-        if age_seconds < 60:
-            contact = f"{round(age_seconds)} seconds ago"
-
-        else:
-            contact = (
-                f"{round(age_seconds / 60)} minutes ago"
-            )
+        contact = (
+            f"{round(age_seconds)} seconds ago"
+            if age_seconds < 60
+            else f"{round(age_seconds/60)} minutes ago"
+        )
 
     else:
 
         contact = "Unknown"
 
+
+
+    map_text = (
+        f"[📍 View aircraft position]({map_link})"
+        if map_link
+        else "Unavailable"
+    )
 
 
     status.append(
@@ -225,10 +209,9 @@ for aircraft in fleet:
         f"Speed: `{speed_kts} kts`\n"
         f"Location: `{location}`\n"
         f"Position: `{position}`\n"
-        f"Map: {map_link}\n"
+        f"Map: {map_text}\n"
         f"Last contact: `{contact}`"
     )
-
 
 
 message = (
@@ -236,7 +219,6 @@ message = (
     +
     "\n\n".join(status)
 )
-
 
 
 requests.post(
