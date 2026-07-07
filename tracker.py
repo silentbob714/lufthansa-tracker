@@ -1,6 +1,7 @@
 import os
 import yaml
 import requests
+from datetime import datetime, timezone
 
 from datasource import get_aircraft_positions
 
@@ -43,35 +44,97 @@ for aircraft in fleet:
     data = positions[icao]
 
 
+    altitude_m = data["altitude"]
+    speed_ms = data["velocity"]
+
+
     altitude_ft = (
-        round(data["altitude"] * 3.28084)
-        if isinstance(data["altitude"], (int,float))
-        else "Unknown"
+        round(altitude_m * 3.28084)
+        if isinstance(altitude_m, (int, float))
+        else 0
     )
 
 
     speed_kts = (
-        round(data["velocity"] * 1.94384)
-        if isinstance(data["velocity"], (int,float))
-        else "Unknown"
+        round(speed_ms * 1.94384)
+        if isinstance(speed_ms, (int, float))
+        else 0
     )
+
+
+    # Determine aircraft status
+
+    if altitude_ft > 1000:
+
+        icon = "🟢"
+        aircraft_status = "Airborne"
+
+
+    elif speed_kts > 3:
+
+        icon = "🟡"
+        aircraft_status = "Ground movement"
+
+
+    else:
+
+        icon = "🔵"
+        aircraft_status = "On ground"
+
+
+    callsign = data["callsign"]
+
+    if callsign in [None, "", "Unknown"]:
+
+        if speed_kts > 3:
+            callsign = "Ground operation"
+        else:
+            callsign = "Not transmitting"
+
+
+    latitude = data["latitude"]
+    longitude = data["longitude"]
 
 
     position = (
-        f"{data['latitude']:.3f}, "
-        f"{data['longitude']:.3f}"
-        if data["latitude"] and data["longitude"]
+        f"{latitude:.3f}, {longitude:.3f}"
+        if latitude and longitude
         else "Unknown"
     )
 
 
+    last_contact = data["last_contact"]
+
+
+    if last_contact:
+
+        age_seconds = (
+            datetime.now(timezone.utc).timestamp()
+            -
+            last_contact
+        )
+
+
+        if age_seconds < 60:
+            contact = f"{round(age_seconds)} seconds ago"
+
+        else:
+            contact = f"{round(age_seconds/60)} minutes ago"
+
+    else:
+
+        contact = "Unknown"
+
+
     status.append(
-        f"🟢 **{registration}**\n"
+        f"{icon} **{registration}**\n"
         f"{aircraft_type}\n"
-        f"Flight: `{data['callsign']}`\n"
-        f"Altitude: `{altitude_ft} ft`\n"
+        f"Status: `{aircraft_status}`\n"
+        f"Flight: `{callsign}`\n"
+        f"Altitude: `{altitude_ft:,} ft`\n"
         f"Speed: `{speed_kts} kts`\n"
-        f"Position: `{position}`"
+        f"Position: `{position}`\n"
+        f"Last contact: `{contact}`"
     )
 
 
