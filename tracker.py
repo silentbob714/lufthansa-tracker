@@ -1,10 +1,14 @@
 import os
 import requests
 
+from database import setup_database, already_alerted, save_alert
+
+
 WEBHOOK = os.environ["DISCORD_WEBHOOK"]
 
 username = os.environ["OPENSKY_USERNAME"]
 password = os.environ["OPENSKY_PASSWORD"]
+
 
 ANNIVERSARY_AIRCRAFT = {
     "3C4A15": "D-ABPU | Boeing 787-9",
@@ -13,40 +17,80 @@ ANNIVERSARY_AIRCRAFT = {
     "3C65A8": "D-AIMH | Airbus A380"
 }
 
+
+setup_database()
+
+
 found = []
+
 
 for icao24, description in ANNIVERSARY_AIRCRAFT.items():
 
-    response = requests.get(
-        "https://opensky-network.org/api/states/all",
-        params={
-            "icao24": icao24.lower()
-        },
-        auth=(username, password),
-        timeout=60
-    )
+    try:
+        response = requests.get(
+            "https://opensky-network.org/api/states/all",
+            params={
+                "icao24": icao24.lower()
+            },
+            auth=(username, password),
+            timeout=60
+        )
 
-    if response.status_code != 200:
-        continue
+        if response.status_code != 200:
+            continue
 
-    data = response.json()
+        data = response.json()
 
-    states = data.get("states")
+        states = data.get("states")
 
-    if states:
+        if not states:
+            continue
+
+
         aircraft = states[0]
 
-        callsign = aircraft[1].strip() if aircraft[1] else "Unknown"
+        callsign = (
+            aircraft[1].strip()
+            if aircraft[1]
+            else "Unknown"
+        )
+
+        altitude_m = aircraft[7]
+
+        altitude_ft = (
+            round(altitude_m * 3.28084)
+            if altitude_m
+            else "N/A"
+        )
+
         latitude = aircraft[6]
         longitude = aircraft[5]
 
-        altitude_m = aircraft[7]
-        altitude_ft = round(altitude_m * 3.28084) if altitude_m else "N/A"
-
         speed_ms = aircraft[9]
-        speed_kts = round(speed_ms * 1.94384) if speed_ms else "N/A"
 
-        heading = round(aircraft[10]) if aircraft[10] else "N/A"
+        speed_kts = (
+            round(speed_ms * 1.94384)
+            if speed_ms
+            else "N/A"
+        )
+
+        heading = (
+            round(aircraft[10])
+            if aircraft[10]
+            else "N/A"
+        )
+
+
+        aircraft_registration = description.split("|")[0].strip()
+
+
+        # Duplicate protection
+        if already_alerted(
+            aircraft_registration,
+            callsign
+        ):
+            continue
+
 
         found.append(
             f"✈ **{description}**\n"
@@ -55,18 +99,37 @@ for icao24, description in ANNIVERSARY_AIRCRAFT.items():
             f"Speed: `{speed_kts} kts`\n"
             f"Heading: `{heading}°`\n"
             f"Position: `{latitude:.3f}, {longitude:.3f}`"
-)
+        )
+
+
+        save_alert(
+            aircraft_registration,
+            callsign
+        )
+
+
+    except Exception as e:
+        print(
+            f"Error checking {description}: {e}"
+        )
 
 
 if found:
+
     message = (
-        "🚨 Lufthansa 100th Anniversary Aircraft Detected\n\n"
+        "🚨 **Lufthansa 100th Anniversary Aircraft Detected**\n\n"
         + "\n\n".join(found)
     )
-else:
-    message = "No anniversary aircraft currently airborne."
 
-requests.post(
-    WEBHOOK,
-    json={"content": message}
-)
+    requests.post(
+        WEBHOOK,
+        json={
+            "content": message
+        }
+    )
+
+else:
+
+    print(
+        "No new anniversary aircraft detected."
+    )
