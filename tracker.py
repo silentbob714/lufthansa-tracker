@@ -3,6 +3,7 @@ import yaml
 import requests
 from datetime import datetime, timezone
 
+
 from datasource import get_aircraft_positions
 
 
@@ -17,6 +18,64 @@ fleet = fleet_data["aircraft"]
 
 
 positions = get_aircraft_positions()
+
+
+def get_location_name(latitude, longitude):
+
+    if latitude is None or longitude is None:
+        return "Unknown"
+
+
+    # Frankfurt Airport
+    if (
+        49.9 < latitude < 50.2
+        and 8.3 < longitude < 8.8
+    ):
+        return "Frankfurt Airport area (FRA)"
+
+
+    # Los Angeles Airport
+    if (
+        33.8 < latitude < 34.1
+        and -118.5 < longitude < -118.2
+    ):
+        return "Los Angeles Airport area (LAX)"
+
+
+    # Munich Airport
+    if (
+        48.2 < latitude < 48.5
+        and 11.4 < longitude < 11.8
+    ):
+        return "Munich Airport area (MUC)"
+
+
+    # Europe general
+    if (
+        35 < latitude < 60
+        and -10 < longitude < 40
+    ):
+        return "Europe"
+
+
+    # Atlantic
+    if (
+        -60 < longitude < -10
+        and 20 < latitude < 70
+    ):
+        return "Atlantic Ocean"
+
+
+    # Pacific
+    if (
+        longitude < -100
+        and latitude > -50
+    ):
+        return "Pacific region"
+
+
+    return "Unknown area"
+
 
 
 status = []
@@ -35,10 +94,11 @@ for aircraft in fleet:
         status.append(
             f"⚪ **{registration}**\n"
             f"{aircraft_type}\n"
-            f"Status: No live position available"
+            f"Status: `No live position available`"
         )
 
         continue
+
 
 
     data = positions[icao]
@@ -62,7 +122,6 @@ for aircraft in fleet:
     )
 
 
-    # Determine aircraft status
 
     if altitude_ft > 1000:
 
@@ -88,17 +147,16 @@ for aircraft in fleet:
         aircraft_status = "On ground"
 
 
+
     callsign = data["callsign"]
 
     if not callsign or callsign == "Unknown":
 
         if aircraft_status == "Ground movement":
-
             callsign = "Ground operation"
-
         else:
-
             callsign = "Not transmitting"
+
 
 
     latitude = data["latitude"]
@@ -114,9 +172,22 @@ for aircraft in fleet:
             f"{latitude:.3f}, {longitude:.3f}"
         )
 
+        map_link = (
+            f"https://www.google.com/maps?q="
+            f"{latitude},{longitude}"
+        )
+
+        location = get_location_name(
+            latitude,
+            longitude
+        )
+
     else:
 
         position = "Unknown"
+        map_link = "Unavailable"
+        location = "Unknown"
+
 
 
     last_contact = data["last_contact"]
@@ -132,13 +203,9 @@ for aircraft in fleet:
 
 
         if age_seconds < 60:
-
-            contact = (
-                f"{round(age_seconds)} seconds ago"
-            )
+            contact = f"{round(age_seconds)} seconds ago"
 
         else:
-
             contact = (
                 f"{round(age_seconds / 60)} minutes ago"
             )
@@ -148,6 +215,7 @@ for aircraft in fleet:
         contact = "Unknown"
 
 
+
     status.append(
         f"{icon} **{registration}**\n"
         f"{aircraft_type}\n"
@@ -155,16 +223,20 @@ for aircraft in fleet:
         f"Flight: `{callsign}`\n"
         f"Altitude: `{altitude_ft:,} ft`\n"
         f"Speed: `{speed_kts} kts`\n"
+        f"Location: `{location}`\n"
         f"Position: `{position}`\n"
+        f"Map: {map_link}\n"
         f"Last contact: `{contact}`"
     )
 
 
+
 message = (
-    "✈ **Lufthansa 100th Anniversary Fleet Status**\n\n"
+    "✈ **Lufthansa 100th Anniversary Fleet Tracker**\n\n"
     +
     "\n\n".join(status)
 )
+
 
 
 requests.post(
