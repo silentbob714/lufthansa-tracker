@@ -37,13 +37,25 @@ for icao24, description in ANNIVERSARY_AIRCRAFT.items():
         aircraft = states[0]
 
         callsign = aircraft[1].strip() if aircraft[1] else "Unknown"
-        altitude = aircraft[7]
+        latitude = aircraft[6]
+        longitude = aircraft[5]
+
+        altitude_m = aircraft[7]
+        altitude_ft = round(altitude_m * 3.28084) if altitude_m else "N/A"
+
+        speed_ms = aircraft[9]
+        speed_kts = round(speed_ms * 1.94384) if speed_ms else "N/A"
+
+        heading = round(aircraft[10]) if aircraft[10] else "N/A"
 
         found.append(
-            f"✈ {description}\n"
-            f"Flight: {callsign}\n"
-            f"Altitude: {altitude} m"
-        )
+            f"✈ **{description}**\n"
+            f"Flight: `{callsign}`\n"
+            f"Altitude: `{altitude_ft:,} ft`\n"
+            f"Speed: `{speed_kts} kts`\n"
+            f"Heading: `{heading}°`\n"
+            f"Position: `{latitude:.3f}, {longitude:.3f}`"
+)
 
 
 if found:
