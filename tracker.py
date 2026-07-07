@@ -14,38 +14,21 @@ response = requests.get(
 
 data = response.json()
 
-messages = []
+lufthansa = []
 
 for aircraft in data.get("states", []):
-
     callsign = aircraft[1]
 
-    if callsign and callsign.startswith("DLH"):
-
-        icao24 = aircraft[0]
-
-        lookup = requests.get(
-            f"https://opensky-network.org/api/metadata/aircraft/icao24/{icao24}",
-            auth=(username, password),
-            timeout=30
+    if callsign and callsign.strip().startswith("DLH"):
+        lufthansa.append(
+            f"{callsign.strip()} | ICAO24: {aircraft[0]}"
         )
 
-        if lookup.status_code == 200:
-
-            info = lookup.json()
-
-            registration = info.get("registration")
-
-            messages.append(
-                f"{callsign.strip()} | {registration} | {icao24}"
-            )
-
-message = "✈ Lufthansa Aircraft\n\n"
-
-if messages:
-    message += "\n".join(messages[:20])
+if lufthansa:
+    message = "✈ Lufthansa detected:\n\n"
+    message += "\n".join(lufthansa[:20])
 else:
-    message += "None detected."
+    message = "No Lufthansa aircraft detected right now."
 
 requests.post(
     WEBHOOK,
