@@ -70,7 +70,13 @@ for aircraft in fleet:
         aircraft_status = "Airborne"
 
 
-    elif speed_kts > 3:
+    elif speed_kts > 80:
+
+        icon = "🟢"
+        aircraft_status = "Airborne transition"
+
+
+    elif speed_kts > 5:
 
         icon = "🟡"
         aircraft_status = "Ground movement"
@@ -84,11 +90,14 @@ for aircraft in fleet:
 
     callsign = data["callsign"]
 
-    if callsign in [None, "", "Unknown"]:
+    if not callsign or callsign == "Unknown":
 
-        if speed_kts > 3:
+        if aircraft_status == "Ground movement":
+
             callsign = "Ground operation"
+
         else:
+
             callsign = "Not transmitting"
 
 
@@ -96,11 +105,18 @@ for aircraft in fleet:
     longitude = data["longitude"]
 
 
-    position = (
-        f"{latitude:.3f}, {longitude:.3f}"
-        if latitude and longitude
-        else "Unknown"
-    )
+    if (
+        isinstance(latitude, (int, float))
+        and isinstance(longitude, (int, float))
+    ):
+
+        position = (
+            f"{latitude:.3f}, {longitude:.3f}"
+        )
+
+    else:
+
+        position = "Unknown"
 
 
     last_contact = data["last_contact"]
@@ -116,10 +132,16 @@ for aircraft in fleet:
 
 
         if age_seconds < 60:
-            contact = f"{round(age_seconds)} seconds ago"
+
+            contact = (
+                f"{round(age_seconds)} seconds ago"
+            )
 
         else:
-            contact = f"{round(age_seconds/60)} minutes ago"
+
+            contact = (
+                f"{round(age_seconds / 60)} minutes ago"
+            )
 
     else:
 
