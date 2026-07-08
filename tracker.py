@@ -1,7 +1,6 @@
 import os
 import yaml
 import requests
-from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from datasource import get_aircraft_positions
@@ -70,6 +69,12 @@ for aircraft in fleet:
     )
 
 
+    status = determine_status(
+        altitude_ft,
+        speed_kts
+    )
+
+
     callsign = (
         data["callsign"]
         if data["callsign"]
@@ -81,12 +86,6 @@ for aircraft in fleet:
     longitude = data["longitude"]
 
 
-    status = determine_status(
-        altitude_ft,
-        speed_kts
-    )
-
-
     previous = get_previous_state(
         registration
     )
@@ -96,25 +95,42 @@ for aircraft in fleet:
 
         previous_status = previous[2]
 
-        if previous_status != status:
+
+        # Takeoff detection
+        if (
+            previous_status in [
+                "On Ground",
+                "Ground Movement"
+            ]
+            and status == "Airborne"
+        ):
 
             alerts.append(
-                f"🚨 **{registration}**\n"
-                f"{aircraft_type}\n"
-                f"Status change:\n"
-                f"`{previous_status}` → `{status}`\n"
+                f"🛫 **TAKEOFF DETECTED**\n\n"
+                f"**{registration}**\n"
+                f"{aircraft_type}\n\n"
+                f"`{previous_status}` → `Airborne`\n\n"
                 f"Flight: `{callsign}`\n"
                 f"Altitude: `{altitude_ft:,} ft`\n"
-                f"Speed: `{speed_kts} kts`"
+                f"Speed: `{speed_kts} kts`\n"
+                f"Position: `{latitude:.3f}, {longitude:.3f}`"
             )
 
-    else:
 
-        alerts.append(
-            f"🆕 **Tracking started: {registration}**\n"
-            f"{aircraft_type}\n"
-            f"Current status: `{status}`"
-        )
+        # Landing detection
+        elif (
+            previous_status == "Airborne"
+            and status == "On Ground"
+        ):
+
+            alerts.append(
+                f"🛬 **LANDING DETECTED**\n\n"
+                f"**{registration}**\n"
+                f"{aircraft_type}\n\n"
+                f"`Airborne` → `On Ground`\n\n"
+                f"Flight: `{callsign}`\n"
+                f"Position: `{latitude:.3f}, {longitude:.3f}`"
+            )
 
 
     save_state(
@@ -133,7 +149,7 @@ for aircraft in fleet:
 if alerts:
 
     message = (
-        "✈ **FlightWatch Alerts**\n\n"
+        "✈ **FlightWatch Event Alert**\n\n"
         +
         "\n\n".join(alerts)
     )
@@ -151,9 +167,8 @@ if alerts:
         f"Discord response: {response.status_code}"
     )
 
-
 else:
 
     print(
-        "No aircraft status changes."
+        "No aircraft events detected."
     )
