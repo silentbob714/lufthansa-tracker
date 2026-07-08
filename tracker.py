@@ -5,42 +5,42 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from datasource import get_aircraft_positions
+from database import (
+    initialize_database,
+    get_previous_state,
+    save_state
+)
 
 load_dotenv()
 
 WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
+
+initialize_database()
+
+
 with open("fleet.yaml", "r") as file:
     fleet = yaml.safe_load(file)["aircraft"]
+
 
 positions = get_aircraft_positions()
 
 
-def get_status(data):
+alerts = []
 
-    altitude_ft = (
-        round(data["altitude"] * 3.28084)
-        if isinstance(data["altitude"], (int, float))
-        else 0
-    )
 
-    speed_kts = (
-        round(data["velocity"] * 1.94384)
-        if isinstance(data["velocity"], (int, float))
-        else 0
-    )
+def determine_status(altitude_ft, speed_kts):
 
     if altitude_ft > 1000:
-        return "🟢 Airborne", altitude_ft, speed_kts
+        return "Airborne"
 
     elif speed_kts > 5:
-        return "🟡 Ground Movement", altitude_ft, speed_kts
+        return "Ground Movement"
 
     else:
-        return "🔵 On Ground", altitude_ft, speed_kts
+        return "On Ground"
 
 
-lines = []
 
 for aircraft in fleet:
 
@@ -48,67 +48,112 @@ for aircraft in fleet:
     aircraft_type = aircraft["type"]
     icao = aircraft["icao24"].lower()
 
+
     if icao not in positions:
-
-        lines.append(
-            f"⚪ {registration}\n"
-            f"{aircraft_type}\n"
-            f"Status: No live position"
-        )
-
         continue
+
 
     data = positions[icao]
 
-    status, altitude_ft, speed_kts = get_status(data)
 
-    callsign = data.get("callsign", "Unknown")
-
-    latitude = data.get("latitude")
-    longitude = data.get("longitude")
-
-    if (
-        isinstance(latitude, (int, float))
-        and isinstance(longitude, (int, float))
-    ):
-        position = f"{latitude:.3f}, {longitude:.3f}"
-    else:
-        position = "Unknown"
-
-    last_contact = data.get("last_contact")
-
-    if last_contact:
-        age = round(
-            datetime.now(timezone.utc).timestamp()
-            - last_contact
-        )
-    else:
-        age = -1
-
-    lines.append(
-        f"{status} {registration}\n"
-        f"{aircraft_type}\n"
-        f"Flight: {callsign}\n"
-        f"Altitude: {altitude_ft:,} ft\n"
-        f"Speed: {speed_kts} kts\n"
-        f"Position: {position}\n"
-        f"Last contact: {age}s ago"
+    altitude_ft = (
+        round(data["altitude"] * 3.28084)
+        if isinstance(data["altitude"], (int, float))
+        else 0
     )
 
 
-message = (
-    "✈ **FlightWatch**\n\n"
-    + "\n\n".join(lines)
-)
+    speed_kts = (
+        round(data["velocity"] * 1.94384)
+        if isinstance(data["velocity"], (int, float))
+        else 0
+    )
 
-print(f"Message length: {len(message)}")
 
-response = requests.post(
-    WEBHOOK,
-    json={
-        "content": message
-    }
-)
+    callsign = (
+        data["callsign"]
+        if data["callsign"]
+        else "Unknown"
+    )
 
-print(f"Discord response: {response.status_code}")
-print(response.text)
+
+    latitude = data["latitude"]
+    longitude = data["longitude"]
+
+
+    status = determine_status(
+        altitude_ft,
+        speed_kts
+    )
+
+
+    previous = get_previous_state(
+        registration
+    )
+
+
+    if previous:
+
+        previous_status = previous[2]
+
+        if previous_status != status:
+
+            alerts.append(
+                f"🚨 **{registration}**\n"
+                f"{aircraft_type}\n"
+                f"Status change:\n"
+                f"`{previous_status}` → `{status}`\n"
+                f"Flight: `{callsign}`\n"
+                f"Altitude: `{altitude_ft:,} ft`\n"
+                f"Speed: `{speed_kts} kts`"
+            )
+
+    else:
+
+        alerts.append(
+            f"🆕 **Tracking started: {registration}**\n"
+            f"{aircraft_type}\n"
+            f"Current status: `{status}`"
+        )
+
+
+    save_state(
+        registration,
+        aircraft_type,
+        status,
+        callsign,
+        altitude_ft,
+        speed_kts,
+        latitude,
+        longitude
+    )
+
+
+
+if alerts:
+
+    message = (
+        "✈ **FlightWatch Alerts**\n\n"
+        +
+        "\n\n".join(alerts)
+    )
+
+
+    response = requests.post(
+        WEBHOOK,
+        json={
+            "content": message
+        }
+    )
+
+
+    print(
+        f"Discord response: {response.status_code}"
+    )
+
+
+else:
+
+    print(
+        "No aircraft status changes."
+    )
