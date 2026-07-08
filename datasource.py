@@ -1,16 +1,17 @@
 import os
 import requests
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def get_aircraft_positions():
 
-    username = os.environ["OPENSKY_USERNAME"]
-    password = os.environ["OPENSKY_PASSWORD"]
-
+    username = os.getenv("OPENSKY_USERNAME")
+    password = os.getenv("OPENSKY_PASSWORD")
 
     url = "https://opensky-network.org/api/states/all"
-
 
     for attempt in range(3):
 
@@ -22,45 +23,40 @@ def get_aircraft_positions():
                 timeout=45
             )
 
-
             response.raise_for_status()
-
 
             data = response.json()
 
-
             aircraft = {}
-
 
             for state in data.get("states", []):
 
-                icao = state[0].lower()
+                try:
 
+                    icao = state[0].lower()
 
-                aircraft[icao] = {
+                    aircraft[icao] = {
+                        "callsign": (
+                            state[1].strip()
+                            if state[1]
+                            else "Unknown"
+                        ),
+                        "longitude": state[5],
+                        "latitude": state[6],
+                        "altitude": state[7],
+                        "velocity": state[9],
+                        "heading": state[10],
+                        "last_contact": state[4]
+                    }
 
-                    "callsign": (
-                        state[1].strip()
-                        if state[1]
-                        else "Unknown"
-                    ),
+                except Exception:
+                    continue
 
-                    "longitude": state[5],
-
-                    "latitude": state[6],
-
-                    "altitude": state[7],
-
-                    "velocity": state[9],
-
-                    "heading": state[10],
-
-                    "last_contact": state[4]
-                }
-
+            print(
+                f"OpenSky returned {len(aircraft):,} aircraft states."
+            )
 
             return aircraft
-
 
         except Exception as e:
 
@@ -68,14 +64,9 @@ def get_aircraft_positions():
                 f"OpenSky attempt {attempt + 1}/3 failed: {e}"
             )
 
-
             if attempt < 2:
-
                 time.sleep(10)
 
-
-
-    # If OpenSky completely fails,
-    # return empty data instead of killing the workflow
+    print("OpenSky unavailable. Returning empty dataset.")
 
     return {}
