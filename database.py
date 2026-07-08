@@ -1,60 +1,105 @@
 import sqlite3
-from datetime import datetime, timezone
-
-DB = "alerts.db"
+from datetime import datetime
 
 
-def setup_database():
-    conn = sqlite3.connect(DB)
+DATABASE = "flightwatch.db"
+
+
+def get_connection():
+
+    return sqlite3.connect(DATABASE)
+
+
+
+def initialize_database():
+
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS alerts (
-            aircraft TEXT,
-            flight TEXT,
-            alerted_at TEXT
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS aircraft_state (
+
+            registration TEXT PRIMARY KEY,
+
+            aircraft_type TEXT,
+
+            status TEXT,
+
+            callsign TEXT,
+
+            altitude INTEGER,
+
+            speed INTEGER,
+
+            latitude REAL,
+
+            longitude REAL,
+
+            last_seen TEXT
+
         )
-    """)
+        """
+    )
 
     conn.commit()
     conn.close()
 
 
-def already_alerted(aircraft, flight):
-    conn = sqlite3.connect(DB)
+
+def get_previous_state(registration):
+
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT alerted_at
-        FROM alerts
-        WHERE aircraft = ?
-        AND flight = ?
-        ORDER BY alerted_at DESC
-        LIMIT 1
-    """, (aircraft, flight))
+    cursor.execute(
+        """
+        SELECT *
+        FROM aircraft_state
+        WHERE registration = ?
+        """,
+        (registration,)
+    )
 
     result = cursor.fetchone()
 
     conn.close()
 
-    if result:
-        return True
-
-    return False
+    return result
 
 
-def save_alert(aircraft, flight):
-    conn = sqlite3.connect(DB)
+
+def save_state(
+    registration,
+    aircraft_type,
+    status,
+    callsign,
+    altitude,
+    speed,
+    latitude,
+    longitude
+):
+
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO alerts
-        VALUES (?, ?, ?)
-    """, (
-        aircraft,
-        flight,
-        datetime.now(timezone.utc).isoformat()
-    ))
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO aircraft_state
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            registration,
+            aircraft_type,
+            status,
+            callsign,
+            altitude,
+            speed,
+            latitude,
+            longitude,
+            datetime.utcnow().isoformat()
+        )
+    )
 
     conn.commit()
     conn.close()
