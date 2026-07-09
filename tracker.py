@@ -1,5 +1,4 @@
 import os
-import yaml
 import requests
 from dotenv import load_dotenv
 
@@ -8,19 +7,24 @@ from database import (
     initialize_database,
     get_previous_state,
     save_state,
-    log_event
+    log_event,
+    get_tracked_aircraft
 )
+
 
 load_dotenv()
 
 WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
+
 initialize_database()
 
-with open("fleet.yaml", "r") as file:
-    fleet = yaml.safe_load(file)["aircraft"]
+
+tracked_aircraft = get_tracked_aircraft()
+
 
 positions = get_aircraft_positions()
+
 
 alerts = []
 
@@ -33,19 +37,25 @@ def determine_status(altitude_ft, speed_kts):
     elif speed_kts > 5:
         return "Ground Movement"
 
-    return "On Ground"
+    else:
+        return "On Ground"
 
 
-for aircraft in fleet:
 
-    registration = aircraft["registration"]
-    aircraft_type = aircraft["type"]
-    icao = aircraft["icao24"].lower()
+for aircraft in tracked_aircraft:
 
-    if icao not in positions:
+    registration = aircraft[0]
+    icao = aircraft[1]
+    aircraft_type = aircraft[2]
+
+
+    if icao.lower() not in positions:
+
         continue
 
-    data = positions[icao]
+
+    data = positions[icao.lower()]
+
 
     altitude_ft = (
         round(data["altitude"] * 3.28084)
@@ -53,11 +63,17 @@ for aircraft in fleet:
         else 0
     )
 
+
     speed_kts = (
         round(data["velocity"] * 1.94384)
         if isinstance(data["velocity"], (int, float))
         else 0
     )
+
+
+    latitude = data["latitude"]
+    longitude = data["longitude"]
+
 
     callsign = (
         data["callsign"]
@@ -65,21 +81,22 @@ for aircraft in fleet:
         else "Unknown"
     )
 
-    latitude = data["latitude"]
-    longitude = data["longitude"]
 
     status = determine_status(
         altitude_ft,
         speed_kts
     )
 
+
     previous = get_previous_state(
         registration
     )
 
+
     if previous:
 
         previous_status = previous[2]
+
 
         if (
             previous_status in
@@ -96,11 +113,16 @@ for aircraft in fleet:
                 longitude
             )
 
+
             alerts.append(
-                f"🛫 **TAKEOFF DETECTED**\n"
-                f"{registration} ({aircraft_type})\n"
-                f"Flight: `{callsign}`"
+                f"🛫 **TAKEOFF DETECTED**\n\n"
+                f"**{registration}**\n"
+                f"{aircraft_type}\n"
+                f"Flight: `{callsign}`\n"
+                f"Altitude: `{altitude_ft:,} ft`\n"
+                f"Speed: `{speed_kts} kts`"
             )
+
 
         elif (
             previous_status == "Airborne"
@@ -116,11 +138,15 @@ for aircraft in fleet:
                 longitude
             )
 
+
             alerts.append(
-                f"🛬 **LANDING DETECTED**\n"
-                f"{registration} ({aircraft_type})\n"
+                f"🛬 **LANDING DETECTED**\n\n"
+                f"**{registration}**\n"
+                f"{aircraft_type}\n"
                 f"Flight: `{callsign}`"
             )
+
+
 
     save_state(
         registration,
@@ -133,20 +159,29 @@ for aircraft in fleet:
         longitude
     )
 
+
+
 if alerts:
+
+    message = (
+        "✈ **FlightWatch Events**\n\n"
+        +
+        "\n\n".join(alerts)
+    )
+
 
     response = requests.post(
         WEBHOOK,
         json={
-            "content":
-            "✈ **FlightWatch Events**\n\n"
-            + "\n\n".join(alerts)
+            "content": message
         }
     )
+
 
     print(
         f"Discord response: {response.status_code}"
     )
+
 
 else:
 
