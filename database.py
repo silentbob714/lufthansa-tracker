@@ -7,25 +7,18 @@ def get_connection():
 return sqlite3.connect(DATABASE)
 
 def initialize_database():
-
-```
 conn = get_connection()
 cursor = conn.cursor()
 
+```
 cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS tracked_aircraft (
-
         registration TEXT PRIMARY KEY,
-
         icao24 TEXT NOT NULL,
-
         aircraft_type TEXT,
-
         active INTEGER DEFAULT 1,
-
         added_date TEXT
-
     )
     """
 )
@@ -33,27 +26,16 @@ cursor.execute(
 cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS aircraft_state (
-
         registration TEXT PRIMARY KEY,
-
         aircraft_type TEXT,
-
         status TEXT,
-
         callsign TEXT,
-
         altitude INTEGER,
-
         speed INTEGER,
-
         latitude REAL,
-
         longitude REAL,
-
         first_seen TEXT,
-
         last_seen TEXT
-
     )
     """
 )
@@ -61,23 +43,14 @@ cursor.execute(
 cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS aircraft_events (
-
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-
         registration TEXT,
-
         aircraft_type TEXT,
-
         event_type TEXT,
-
         callsign TEXT,
-
         latitude REAL,
-
         longitude REAL,
-
         timestamp TEXT
-
     )
     """
 )
@@ -87,11 +60,10 @@ conn.close()
 ```
 
 def get_previous_state(registration):
-
-```
 conn = get_connection()
 cursor = conn.cursor()
 
+```
 cursor.execute(
     """
     SELECT *
@@ -118,11 +90,10 @@ speed,
 latitude,
 longitude
 ):
-
-```
 conn = get_connection()
 cursor = conn.cursor()
 
+```
 existing = get_previous_state(registration)
 
 now = datetime.utcnow().isoformat()
@@ -163,11 +134,10 @@ callsign,
 latitude,
 longitude
 ):
-
-```
 conn = get_connection()
 cursor = conn.cursor()
 
+```
 cursor.execute(
     """
     INSERT INTO aircraft_events
@@ -202,11 +172,10 @@ registration,
 icao24,
 aircraft_type
 ):
-
-```
 conn = get_connection()
 cursor = conn.cursor()
 
+```
 cursor.execute(
     """
     INSERT OR REPLACE INTO tracked_aircraft
@@ -225,11 +194,10 @@ conn.close()
 ```
 
 def get_tracked_aircraft():
-
-```
 conn = get_connection()
 cursor = conn.cursor()
 
+```
 cursor.execute(
     """
     SELECT registration,
