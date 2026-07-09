@@ -7,23 +7,20 @@ from datasource import get_aircraft_positions
 from database import (
     initialize_database,
     get_previous_state,
-    save_state
+    save_state,
+    log_event
 )
 
 load_dotenv()
 
 WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
-
 initialize_database()
-
 
 with open("fleet.yaml", "r") as file:
     fleet = yaml.safe_load(file)["aircraft"]
 
-
 positions = get_aircraft_positions()
-
 
 alerts = []
 
@@ -36,9 +33,7 @@ def determine_status(altitude_ft, speed_kts):
     elif speed_kts > 5:
         return "Ground Movement"
 
-    else:
-        return "On Ground"
-
+    return "On Ground"
 
 
 for aircraft in fleet:
@@ -47,13 +42,10 @@ for aircraft in fleet:
     aircraft_type = aircraft["type"]
     icao = aircraft["icao24"].lower()
 
-
     if icao not in positions:
         continue
 
-
     data = positions[icao]
-
 
     altitude_ft = (
         round(data["altitude"] * 3.28084)
@@ -61,19 +53,11 @@ for aircraft in fleet:
         else 0
     )
 
-
     speed_kts = (
         round(data["velocity"] * 1.94384)
         if isinstance(data["velocity"], (int, float))
         else 0
     )
-
-
-    status = determine_status(
-        altitude_ft,
-        speed_kts
-    )
-
 
     callsign = (
         data["callsign"]
@@ -81,57 +65,62 @@ for aircraft in fleet:
         else "Unknown"
     )
 
-
     latitude = data["latitude"]
     longitude = data["longitude"]
 
+    status = determine_status(
+        altitude_ft,
+        speed_kts
+    )
 
     previous = get_previous_state(
         registration
     )
 
-
     if previous:
 
         previous_status = previous[2]
 
-
-        # Takeoff detection
         if (
-            previous_status in [
-                "On Ground",
-                "Ground Movement"
-            ]
+            previous_status in
+            ["On Ground", "Ground Movement"]
             and status == "Airborne"
         ):
 
-            alerts.append(
-                f"🛫 **TAKEOFF DETECTED**\n\n"
-                f"**{registration}**\n"
-                f"{aircraft_type}\n\n"
-                f"`{previous_status}` → `Airborne`\n\n"
-                f"Flight: `{callsign}`\n"
-                f"Altitude: `{altitude_ft:,} ft`\n"
-                f"Speed: `{speed_kts} kts`\n"
-                f"Position: `{latitude:.3f}, {longitude:.3f}`"
+            log_event(
+                registration,
+                aircraft_type,
+                "TAKEOFF",
+                callsign,
+                latitude,
+                longitude
             )
 
+            alerts.append(
+                f"🛫 **TAKEOFF DETECTED**\n"
+                f"{registration} ({aircraft_type})\n"
+                f"Flight: `{callsign}`"
+            )
 
-        # Landing detection
         elif (
             previous_status == "Airborne"
             and status == "On Ground"
         ):
 
-            alerts.append(
-                f"🛬 **LANDING DETECTED**\n\n"
-                f"**{registration}**\n"
-                f"{aircraft_type}\n\n"
-                f"`Airborne` → `On Ground`\n\n"
-                f"Flight: `{callsign}`\n"
-                f"Position: `{latitude:.3f}, {longitude:.3f}`"
+            log_event(
+                registration,
+                aircraft_type,
+                "LANDING",
+                callsign,
+                latitude,
+                longitude
             )
 
+            alerts.append(
+                f"🛬 **LANDING DETECTED**\n"
+                f"{registration} ({aircraft_type})\n"
+                f"Flight: `{callsign}`"
+            )
 
     save_state(
         registration,
@@ -144,24 +133,16 @@ for aircraft in fleet:
         longitude
     )
 
-
-
 if alerts:
-
-    message = (
-        "✈ **FlightWatch Event Alert**\n\n"
-        +
-        "\n\n".join(alerts)
-    )
-
 
     response = requests.post(
         WEBHOOK,
         json={
-            "content": message
+            "content":
+            "✈ **FlightWatch Events**\n\n"
+            + "\n\n".join(alerts)
         }
     )
-
 
     print(
         f"Discord response: {response.status_code}"
