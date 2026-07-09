@@ -1,180 +1,268 @@
 import os
 import requests
+
 from dotenv import load_dotenv
 
 from datasource import get_aircraft_positions
+
 from database import (
-    initialize_database,
+    get_tracked_aircraft,
     get_previous_state,
     save_state,
-    log_event,
-    get_tracked_aircraft
+    log_event
 )
 
 
 load_dotenv()
 
-WEBHOOK = os.getenv("DISCORD_WEBHOOK")
+
+WEBHOOK = os.environ["DISCORD_WEBHOOK"]
 
 
-initialize_database()
-
-
-tracked_aircraft = get_tracked_aircraft()
+print("Running FlightWatch check...")
 
 
 positions = get_aircraft_positions()
 
 
-alerts = []
-
-
-def determine_status(altitude_ft, speed_kts):
-
-    if altitude_ft > 1000:
-        return "Airborne"
-
-    elif speed_kts > 5:
-        return "Ground Movement"
-
-    else:
-        return "On Ground"
+print(
+    f"OpenSky returned {len(positions)} aircraft states."
+)
 
 
 
-for aircraft in tracked_aircraft:
+def get_location_name(latitude, longitude):
 
-    registration = aircraft[0]
-    icao = aircraft[1]
-    aircraft_type = aircraft[2]
+    if latitude is None or longitude is None:
+        return "Unknown"
 
 
-    if icao.lower() not in positions:
+    if (
+        49.9 < latitude < 50.2
+        and 8.3 < longitude < 8.8
+    ):
+        return "Frankfurt Airport area (FRA)"
+
+
+    if (
+        48.2 < latitude < 48.5
+        and 11.4 < longitude < 11.8
+    ):
+        return "Munich Airport area (MUC)"
+
+
+    if (
+        35 < latitude < 60
+        and -10 < longitude < 40
+    ):
+        return "Europe"
+
+
+    return "Unknown area"
+
+
+
+tracked = get_tracked_aircraft()
+
+
+events = []
+
+
+
+for aircraft in tracked:
+
+    icao24 = aircraft[0]
+
+    registration = aircraft[1] or icao24.upper()
+
+    manufacturer = aircraft[2] or ""
+
+    model = aircraft[3] or "Unknown"
+
+    operator = aircraft[4] or "Unknown"
+
+    category = aircraft[5] or "Unknown"
+
+
+
+    previous = get_previous_state(icao24)
+
+
+
+    if icao24 not in positions:
 
         continue
 
 
-    data = positions[icao.lower()]
+
+    data = positions[icao24]
 
 
     altitude_ft = (
+
         round(data["altitude"] * 3.28084)
-        if isinstance(data["altitude"], (int, float))
+
+        if isinstance(data["altitude"], (int,float))
+
         else 0
+
     )
 
 
     speed_kts = (
+
         round(data["velocity"] * 1.94384)
-        if isinstance(data["velocity"], (int, float))
+
+        if isinstance(data["velocity"], (int,float))
+
         else 0
+
     )
+
+
+    callsign = data["callsign"] or "Unknown"
 
 
     latitude = data["latitude"]
+
     longitude = data["longitude"]
 
 
-    callsign = (
-        data["callsign"]
-        if data["callsign"]
-        else "Unknown"
-    )
-
-
-    status = determine_status(
-        altitude_ft,
-        speed_kts
-    )
-
-
-    previous = get_previous_state(
-        registration
-    )
-
-
-    if previous:
-
-        previous_status = previous[2]
-
-
-        if (
-            previous_status in
-            ["On Ground", "Ground Movement"]
-            and status == "Airborne"
-        ):
-
-            log_event(
-                registration,
-                aircraft_type,
-                "TAKEOFF",
-                callsign,
-                latitude,
-                longitude
-            )
-
-
-            alerts.append(
-                f"🛫 **TAKEOFF DETECTED**\n\n"
-                f"**{registration}**\n"
-                f"{aircraft_type}\n"
-                f"Flight: `{callsign}`\n"
-                f"Altitude: `{altitude_ft:,} ft`\n"
-                f"Speed: `{speed_kts} kts`"
-            )
-
-
-        elif (
-            previous_status == "Airborne"
-            and status == "On Ground"
-        ):
-
-            log_event(
-                registration,
-                aircraft_type,
-                "LANDING",
-                callsign,
-                latitude,
-                longitude
-            )
-
-
-            alerts.append(
-                f"🛬 **LANDING DETECTED**\n\n"
-                f"**{registration}**\n"
-                f"{aircraft_type}\n"
-                f"Flight: `{callsign}`"
-            )
-
-
-
-    save_state(
-        registration,
-        aircraft_type,
-        status,
-        callsign,
-        altitude_ft,
-        speed_kts,
+    location = get_location_name(
         latitude,
         longitude
     )
 
 
 
-if alerts:
+    if altitude_ft > 1000:
 
-    message = (
-        "✈ **FlightWatch Events**\n\n"
-        +
-        "\n\n".join(alerts)
+        current_status = "Airborne"
+
+    elif speed_kts > 5:
+
+        current_status = "Ground movement"
+
+    else:
+
+        current_status = "On ground"
+
+
+
+    event = None
+
+
+
+    if previous:
+
+        old_status = previous[1]
+
+
+        if (
+            old_status != "Airborne"
+            and current_status == "Airborne"
+        ):
+
+            event = "Takeoff detected"
+
+
+
+        elif (
+
+            old_status == "Airborne"
+
+            and current_status == "On ground"
+
+        ):
+
+            event = "Landing detected"
+
+
+
+    else:
+
+        event = "Aircraft tracking started"
+
+
+
+    save_state(
+
+        icao24,
+
+        current_status,
+
+        callsign,
+
+        altitude_ft,
+
+        speed_kts,
+
+        latitude,
+
+        longitude
+
     )
 
 
+
+    if event:
+
+
+        log_event(
+
+            icao24,
+
+            event,
+
+            callsign,
+
+            latitude,
+
+            longitude
+
+        )
+
+
+        events.append(
+
+            f"✈ **FlightWatch Alert**\n\n"
+
+            f"🟢 **{registration}**\n"
+
+            f"{manufacturer} {model}\n"
+
+            f"Operator: `{operator}`\n"
+
+            f"Category: `{category}`\n\n"
+
+            f"Event: `{event}`\n"
+
+            f"Flight: `{callsign}`\n"
+
+            f"Altitude: `{altitude_ft:,} ft`\n"
+
+            f"Speed: `{speed_kts} kts`\n"
+
+            f"Location: `{location}`\n"
+
+        )
+
+
+
+if events:
+
+
+    message = "\n\n".join(events)
+
+
     response = requests.post(
+
         WEBHOOK,
+
         json={
             "content": message
         }
+
     )
 
 
@@ -185,6 +273,9 @@ if alerts:
 
 else:
 
+
     print(
         "No aircraft events detected."
     )
+
+

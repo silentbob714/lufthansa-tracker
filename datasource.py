@@ -52,10 +52,6 @@ def get_aircraft_positions():
                 except Exception:
                     continue
 
-            print(
-                f"OpenSky returned {len(aircraft):,} aircraft states."
-            )
-
             return aircraft
 
         except Exception as e:
