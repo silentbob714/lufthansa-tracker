@@ -9,7 +9,6 @@ def get_connection():
     return sqlite3.connect(DATABASE)
 
 
-
 def initialize_database():
 
     conn = get_connection()
@@ -43,9 +42,32 @@ def initialize_database():
         """
     )
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS aircraft_events (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            registration TEXT,
+
+            aircraft_type TEXT,
+
+            event_type TEXT,
+
+            callsign TEXT,
+
+            latitude REAL,
+
+            longitude REAL,
+
+            timestamp TEXT
+
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
-
 
 
 def get_previous_state(registration):
@@ -69,7 +91,6 @@ def get_previous_state(registration):
     return result
 
 
-
 def save_state(
     registration,
     aircraft_type,
@@ -84,23 +105,16 @@ def save_state(
     conn = get_connection()
     cursor = conn.cursor()
 
-
     existing = get_previous_state(
         registration
     )
 
-
     now = datetime.utcnow().isoformat()
 
-
     if existing:
-
-        first_seen = existing[9]
-
+        first_seen = existing[8]
     else:
-
         first_seen = now
-
 
     cursor.execute(
         """
@@ -121,6 +135,46 @@ def save_state(
         )
     )
 
+    conn.commit()
+    conn.close()
+
+
+def log_event(
+    registration,
+    aircraft_type,
+    event_type,
+    callsign,
+    latitude,
+    longitude
+):
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO aircraft_events
+        (
+            registration,
+            aircraft_type,
+            event_type,
+            callsign,
+            latitude,
+            longitude,
+            timestamp
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            registration,
+            aircraft_type,
+            event_type,
+            callsign,
+            latitude,
+            longitude,
+            datetime.utcnow().isoformat()
+        )
+    )
 
     conn.commit()
     conn.close()
