@@ -2,17 +2,9 @@ import os
 
 import discord
 
-from discord import app_commands
-
 from dotenv import load_dotenv
 
-from database import (
-    initialize_database,
-    get_tracked_aircraft,
-    add_tracked_aircraft,
-    remove_tracked_aircraft,
-    get_connection
-)
+from database import initialize_database
 
 
 load_dotenv()
@@ -35,7 +27,25 @@ class FlightWatchBot(discord.Client):
             intents=intents
         )
 
-        self.tree = app_commands.CommandTree(self)
+        self.tree = discord.app_commands.CommandTree(self)
+
+
+
+    async def setup_hook(self):
+
+        await self.load_extension(
+            "cogs.aircraft"
+        )
+
+        await self.load_extension(
+            "cogs.fleet"
+        )
+
+        await self.load_extension(
+            "cogs.system"
+        )
+
+        await self.tree.sync()
 
 
 
@@ -46,246 +56,9 @@ bot = FlightWatchBot()
 @bot.event
 async def on_ready():
 
-    await bot.tree.sync()
-
     print(
         f"Logged in as {bot.user}"
     )
-
-
-
-@bot.tree.command(
-    name="fleet",
-    description="Show tracked aircraft"
-)
-async def fleet(interaction: discord.Interaction):
-
-    aircraft = get_tracked_aircraft()
-
-
-    if not aircraft:
-
-        await interaction.response.send_message(
-            "No aircraft currently tracked."
-        )
-
-        return
-
-
-
-    message = (
-        "✈ **FlightWatch Fleet**\n\n"
-    )
-
-
-    for plane in aircraft:
-
-        icao24 = plane[0]
-
-        registration = plane[1] or icao24.upper()
-
-        manufacturer = plane[2] or ""
-
-        model = plane[3] or "Unknown"
-
-        operator = plane[4] or "Unknown"
-
-        category = plane[5] or "Unknown"
-
-
-        message += (
-
-            f"**{registration}**\n"
-
-            f"{manufacturer} {model}\n"
-
-            f"Operator: `{operator}`\n"
-
-            f"Category: `{category}`\n\n"
-
-        )
-
-
-    await interaction.response.send_message(
-        message
-    )
-
-
-
-
-
-@bot.tree.command(
-    name="track",
-    description="Track an aircraft by registration"
-)
-@app_commands.describe(
-    registration="Aircraft registration (example: D-ABYN)"
-)
-async def track(
-    interaction: discord.Interaction,
-    registration: str
-):
-
-    conn = get_connection()
-
-    cursor = conn.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT
-            icao24,
-            registration,
-            manufacturer,
-            model,
-            operator,
-            category
-
-        FROM aircraft_metadata
-
-        WHERE registration = ?
-
-        """,
-
-        (
-            registration.upper(),
-        )
-    )
-
-
-    plane = cursor.fetchone()
-
-
-    conn.close()
-
-
-
-    if not plane:
-
-        await interaction.response.send_message(
-            "Aircraft not found in database."
-        )
-
-        return
-
-
-
-    add_tracked_aircraft(
-
-        plane[0],
-
-        plane[1],
-
-        str(interaction.user)
-
-    )
-
-
-
-    await interaction.response.send_message(
-
-        f"✅ Now tracking **{plane[1]}**\n"
-
-        f"{plane[2]} {plane[3]}\n"
-
-        f"Operator: {plane[4]}\n"
-
-        f"Category: {plane[5]}"
-
-    )
-
-
-
-
-
-@bot.tree.command(
-    name="untrack",
-    description="Stop tracking an aircraft"
-)
-@app_commands.describe(
-    registration="Aircraft registration (example: D-ABYN)"
-)
-async def untrack(
-    interaction: discord.Interaction,
-    registration: str
-):
-
-    removed = remove_tracked_aircraft(
-        registration.upper()
-    )
-
-
-    if removed:
-
-        await interaction.response.send_message(
-
-            f"🛑 Stopped tracking **{registration.upper()}**"
-
-        )
-
-    else:
-
-        await interaction.response.send_message(
-
-            f"Aircraft **{registration.upper()}** was not found."
-
-        )
-
-
-
-
-
-@bot.tree.command(
-    name="status",
-    description="Show FlightWatch system status"
-)
-async def status(interaction: discord.Interaction):
-
-    try:
-
-        conn = get_connection()
-
-        cursor = conn.cursor()
-
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM tracked_aircraft WHERE active = 1"
-        )
-
-
-        tracked_count = cursor.fetchone()[0]
-
-
-        conn.close()
-
-
-        database_status = "🟢 Online"
-
-
-    except Exception:
-
-        tracked_count = "Unknown"
-
-        database_status = "🔴 Error"
-
-
-
-    await interaction.response.send_message(
-
-        "✈ **FlightWatch Status**\n\n"
-
-        f"Bot:\n"
-        f"🟢 Online\n\n"
-
-        f"Database:\n"
-        f"{database_status}\n\n"
-
-        f"Tracked aircraft:\n"
-        f"`{tracked_count}`"
-
-    )
-
-
 
 
 
