@@ -1,4 +1,3 @@
-```python
 import os
 
 import discord
@@ -66,7 +65,6 @@ class FlightWatchBot(commands.Bot):
         )
 
 
-
         print("Clearing old guild commands...")
 
 
@@ -121,4 +119,3 @@ async def on_ready():
 
 
 bot.run(TOKEN)
-```
