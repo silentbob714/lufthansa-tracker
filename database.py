@@ -16,8 +16,6 @@ def initialize_database():
     cursor = conn.cursor()
 
 
-    # Aircraft identity / metadata
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS aircraft_metadata (
 
@@ -46,8 +44,6 @@ def initialize_database():
 
 
 
-    # Aircraft selected for tracking
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tracked_aircraft (
 
@@ -65,8 +61,6 @@ def initialize_database():
     """)
 
 
-
-    # Live aircraft state
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS aircraft_state (
@@ -94,8 +88,6 @@ def initialize_database():
 
 
 
-    # Historical events
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS aircraft_events (
 
@@ -117,9 +109,6 @@ def initialize_database():
     """)
 
 
-
-    # Migration:
-    # Preserve old tracked_aircraft entries if they exist
 
     try:
 
@@ -245,6 +234,54 @@ def add_tracked_aircraft(
     conn.commit()
 
     conn.close()
+
+
+
+def remove_tracked_aircraft(registration):
+
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+
+    cursor.execute(
+        """
+        UPDATE tracked_aircraft
+
+        SET active = 0
+
+        WHERE icao24 IN
+
+        (
+
+            SELECT icao24
+
+            FROM aircraft_metadata
+
+            WHERE registration = ?
+
+        )
+
+        """,
+
+        (
+
+            registration.upper(),
+
+        )
+
+    )
+
+
+    removed = cursor.rowcount
+
+
+    conn.commit()
+
+    conn.close()
+
+
+    return removed
 
 
 
