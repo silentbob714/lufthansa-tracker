@@ -1,18 +1,12 @@
 import discord
 
-from discord import app_commands
-
 from discord.ext import commands
 
-from database import (
-    add_tracked_aircraft,
-    remove_tracked_aircraft,
-    get_connection
-)
+from database import get_tracked_aircraft
 
 
 
-class Aircraft(commands.Cog):
+class Fleet(commands.Cog):
 
     def __init__(self, bot):
 
@@ -20,186 +14,23 @@ class Aircraft(commands.Cog):
 
 
 
-    @app_commands.command(
-        name="track",
-        description="Track an aircraft by registration"
+    @discord.app_commands.command(
+        name="fleet",
+        description="Show tracked aircraft"
     )
-    @app_commands.describe(
-        registration="Aircraft registration (example: D-ABYN)"
-    )
-    async def track(
+    async def fleet(
         self,
-        interaction: discord.Interaction,
-        registration: str
+        interaction: discord.Interaction
     ):
 
-        conn = get_connection()
-
-        cursor = conn.cursor()
-
-
-        cursor.execute(
-            """
-            SELECT
-                icao24,
-                registration,
-                manufacturer,
-                model,
-                operator,
-                category
-
-            FROM aircraft_metadata
-
-            WHERE registration = ?
-
-            """,
-
-            (
-                registration.upper(),
-            )
-        )
-
-
-        plane = cursor.fetchone()
-
-
-        conn.close()
+        aircraft = get_tracked_aircraft()
 
 
 
-        if not plane:
+        if not aircraft:
 
             await interaction.response.send_message(
-                "Aircraft not found in database."
-            )
-
-            return
-
-
-
-        add_tracked_aircraft(
-
-            plane[0],
-
-            plane[1],
-
-            str(interaction.user)
-
-        )
-
-
-
-        await interaction.response.send_message(
-
-            f"✅ Now tracking **{plane[1]}**\n"
-
-            f"{plane[2]} {plane[3]}\n"
-
-            f"Operator: {plane[4]}\n"
-
-            f"Category: {plane[5]}"
-
-        )
-
-
-
-
-
-    @app_commands.command(
-        name="untrack",
-        description="Stop tracking an aircraft"
-    )
-    @app_commands.describe(
-        registration="Aircraft registration (example: D-ABYN)"
-    )
-    async def untrack(
-        self,
-        interaction: discord.Interaction,
-        registration: str
-    ):
-
-        removed = remove_tracked_aircraft(
-            registration.upper()
-        )
-
-
-        if removed:
-
-            await interaction.response.send_message(
-
-                f"🛑 Stopped tracking **{registration.upper()}**"
-
-            )
-
-        else:
-
-            await interaction.response.send_message(
-
-                f"Aircraft **{registration.upper()}** was not found."
-
-            )
-
-
-
-
-
-    @app_commands.command(
-        name="lookup",
-        description="Lookup aircraft information"
-    )
-    @app_commands.describe(
-        registration="Aircraft registration (example: D-AING)"
-    )
-    async def lookup(
-        self,
-        interaction: discord.Interaction,
-        registration: str
-    ):
-
-        conn = get_connection()
-
-        cursor = conn.cursor()
-
-
-        cursor.execute(
-            """
-            SELECT
-
-                icao24,
-                registration,
-                manufacturer,
-                model,
-                type_designator,
-                operator,
-                owner,
-                country,
-                category
-
-            FROM aircraft_metadata
-
-            WHERE registration = ?
-
-            """,
-
-            (
-                registration.upper(),
-            )
-        )
-
-
-        plane = cursor.fetchone()
-
-
-        conn.close()
-
-
-
-        if not plane:
-
-            await interaction.response.send_message(
-
-                "Aircraft not found in database."
-
+                "No aircraft currently tracked."
             )
 
             return
@@ -208,77 +39,48 @@ class Aircraft(commands.Cog):
 
         embed = discord.Embed(
 
-            title="✈ Aircraft Lookup",
+            title="✈ FlightWatch Fleet",
 
-            description=f"**{plane[1]}**"
-
-        )
-
-
-        embed.add_field(
-
-            name="Aircraft",
-
-            value=f"{plane[2]} {plane[3]}",
-
-            inline=False
+            description="Currently tracked aircraft"
 
         )
 
 
-        embed.add_field(
 
-            name="ICAO24",
+        for plane in aircraft:
 
-            value=plane[0],
+            icao24 = plane[0]
 
-            inline=True
+            registration = plane[1] or icao24.upper()
 
-        )
+            manufacturer = plane[2] or ""
 
+            model = plane[3] or "Unknown"
 
-        embed.add_field(
+            operator = plane[4] or "Unknown"
 
-            name="Operator",
-
-            value=plane[5] or "Unknown",
-
-            inline=True
-
-        )
+            category = plane[5] or "Unknown"
 
 
-        embed.add_field(
 
-            name="Owner",
+            embed.add_field(
 
-            value=plane[6] or "Unknown",
+                name=registration,
 
-            inline=True
+                value=(
 
-        )
+                    f"{manufacturer} {model}\n"
 
+                    f"Operator: `{operator}`\n"
 
-        embed.add_field(
+                    f"Category: `{category}`"
 
-            name="Country",
+                ),
 
-            value=plane[7] or "Unknown",
+                inline=False
 
-            inline=True
+            )
 
-        )
-
-
-        embed.add_field(
-
-            name="Category",
-
-            value=plane[8] or "Unknown",
-
-            inline=True
-
-        )
 
 
         await interaction.response.send_message(
@@ -294,5 +96,7 @@ class Aircraft(commands.Cog):
 async def setup(bot):
 
     await bot.add_cog(
-        Aircraft(bot)
+
+        Fleet(bot)
+
     )
