@@ -1,7 +1,9 @@
 import os
 import requests
 import time
+
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -13,6 +15,7 @@ def get_aircraft_positions():
 
     url = "https://opensky-network.org/api/states/all"
 
+
     for attempt in range(3):
 
         try:
@@ -23,17 +26,36 @@ def get_aircraft_positions():
                 timeout=45
             )
 
+
+            if response.status_code == 429:
+
+                retry_after = response.headers.get(
+                    "X-Rate-Limit-Retry-After-Seconds",
+                    "unknown"
+                )
+
+                print(
+                    f"OpenSky rate limited. Retry after {retry_after} seconds."
+                )
+
+                return {}
+
+
             response.raise_for_status()
+
 
             data = response.json()
 
+
             aircraft = {}
+
 
             for state in data.get("states", []):
 
                 try:
 
                     icao = state[0].lower()
+
 
                     aircraft[icao] = {
                         "callsign": (
@@ -49,20 +71,32 @@ def get_aircraft_positions():
                         "last_contact": state[4]
                     }
 
+
                 except Exception:
+
                     continue
+
 
             return aircraft
 
+
         except Exception as e:
+
 
             print(
                 f"OpenSky attempt {attempt + 1}/3 failed: {e}"
             )
 
+
             if attempt < 2:
+
                 time.sleep(10)
 
-    print("OpenSky unavailable. Returning empty dataset.")
+
+
+    print(
+        "OpenSky unavailable. Returning empty dataset."
+    )
+
 
     return {}
