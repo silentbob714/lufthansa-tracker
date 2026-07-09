@@ -61,13 +61,12 @@ class FlightWatchBot(commands.Bot):
         print("Loaded system cog")
 
 
-
         guild = discord.Object(
             id=GUILD_ID
         )
 
 
-        print("Clearing old guild commands...")
+        print("Clearing guild command cache...")
 
 
         self.tree.clear_commands(
