@@ -291,6 +291,197 @@ class Aircraft(commands.Cog):
 
 
 
+    @app_commands.command(
+        name="info",
+        description="Show live aircraft status"
+    )
+    @app_commands.describe(
+        registration="Aircraft registration (example: D-ABYN)"
+    )
+    async def info(
+        self,
+        interaction: discord.Interaction,
+        registration: str
+    ):
+
+        conn = get_connection()
+
+        cursor = conn.cursor()
+
+
+        cursor.execute(
+            """
+            SELECT
+
+                m.registration,
+                m.manufacturer,
+                m.model,
+                m.operator,
+                m.icao24,
+
+                s.status,
+                s.callsign,
+                s.altitude,
+                s.speed,
+                s.latitude,
+                s.longitude,
+                s.last_seen
+
+            FROM aircraft_metadata m
+
+            LEFT JOIN aircraft_state s
+
+            ON m.icao24 = s.icao24
+
+            WHERE m.registration = ?
+
+            """,
+
+            (
+                registration.upper(),
+            )
+        )
+
+
+        plane = cursor.fetchone()
+
+
+        conn.close()
+
+
+
+        if not plane:
+
+            await interaction.response.send_message(
+
+                "Aircraft not found in database."
+
+            )
+
+            return
+
+
+
+        embed = discord.Embed(
+
+            title="✈ FlightWatch Live Info",
+
+            description=f"**{plane[0]}**"
+
+        )
+
+
+        embed.add_field(
+
+            name="Aircraft",
+
+            value=f"{plane[1]} {plane[2]}",
+
+            inline=False
+
+        )
+
+
+        embed.add_field(
+
+            name="Operator",
+
+            value=plane[3] or "Unknown",
+
+            inline=True
+
+        )
+
+
+        embed.add_field(
+
+            name="ICAO24",
+
+            value=plane[4],
+
+            inline=True
+
+        )
+
+
+        embed.add_field(
+
+            name="Status",
+
+            value=plane[5] or "No current data",
+
+            inline=True
+
+        )
+
+
+        embed.add_field(
+
+            name="Callsign",
+
+            value=plane[6] or "Unknown",
+
+            inline=True
+
+        )
+
+
+        embed.add_field(
+
+            name="Altitude",
+
+            value=f"{plane[7]} ft" if plane[7] else "Unknown",
+
+            inline=True
+
+        )
+
+
+        embed.add_field(
+
+            name="Speed",
+
+            value=f"{plane[8]} knots" if plane[8] else "Unknown",
+
+            inline=True
+
+        )
+
+
+        if plane[9] and plane[10]:
+
+            embed.add_field(
+
+                name="Position",
+
+                value=f"{plane[9]}, {plane[10]}",
+
+                inline=False
+
+            )
+
+
+        embed.add_field(
+
+            name="Last Seen",
+
+            value=plane[11] or "Unknown",
+
+            inline=False
+
+        )
+
+
+        await interaction.response.send_message(
+
+            embed=embed
+
+        )
+
+
+
+
+
 async def setup(bot):
 
     await bot.add_cog(
