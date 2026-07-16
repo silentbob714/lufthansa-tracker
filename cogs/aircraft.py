@@ -603,7 +603,7 @@ class Aircraft(commands.Cog):
                 e.timestamp
             FROM aircraft_events e
             LEFT JOIN aircraft_metadata m
-                ON e.icao24 = m.icao24
+                ON LOWER(e.icao24) = LOWER(m.icao24)
             ORDER BY e.id DESC
             LIMIT 1
             """
@@ -747,6 +747,131 @@ class Aircraft(commands.Cog):
                 value="No aircraft events have been recorded.",
                 inline=False
             )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
+
+    @app_commands.command(
+        name="recent",
+        description="Show the newest events across the tracked fleet"
+    )
+    async def recent(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM aircraft_events
+            """
+        )
+
+        total_events = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            SELECT
+                e.icao24,
+                m.registration,
+                m.manufacturer,
+                m.model,
+                e.event_type,
+                e.callsign,
+                e.latitude,
+                e.longitude,
+                e.timestamp
+            FROM aircraft_events e
+            LEFT JOIN aircraft_metadata m
+                ON LOWER(e.icao24) = LOWER(m.icao24)
+            ORDER BY e.id DESC
+            LIMIT 10
+            """
+        )
+
+        events = cursor.fetchall()
+
+        conn.close()
+
+        if not events:
+            await interaction.response.send_message(
+                "No fleet events have been recorded yet."
+            )
+
+            return
+
+        embed = discord.Embed(
+            title="🕘 Recent FlightWatch Events",
+            description=(
+                "Newest takeoffs, landings, and tracking "
+                "events across the fleet"
+            )
+        )
+
+        for index, event in enumerate(events, start=1):
+            icao24 = event[0] or "Unknown"
+            registration = event[1] or icao24
+            manufacturer = event[2]
+            model = event[3]
+            event_type = format_event_type(
+                event[4]
+            )
+            callsign = event[5] or "Unknown"
+            latitude = event[6]
+            longitude = event[7]
+            timestamp = event[8] or "Unknown"
+
+            aircraft_name = " ".join(
+                part
+                for part in (
+                    manufacturer,
+                    model
+                )
+                if part
+            )
+
+            details = [
+                f"**Recorded:** {timestamp}",
+                f"**Callsign:** {callsign}",
+                f"**ICAO24:** `{icao24}`"
+            ]
+
+            if aircraft_name:
+                details.append(
+                    f"**Aircraft:** {aircraft_name}"
+                )
+
+            if latitude is not None and longitude is not None:
+                map_url = (
+                    "https://www.google.com/maps/search/"
+                    f"?api=1&query={latitude},{longitude}"
+                )
+
+                details.append(
+                    f"**Position:** "
+                    f"[{latitude}, {longitude}]({map_url})"
+                )
+
+            embed.add_field(
+                name=(
+                    f"{index}. {registration} — "
+                    f"{event_type}"
+                ),
+                value="\n".join(details),
+                inline=False
+            )
+
+        embed.set_footer(
+            text=(
+                f"Showing newest {len(events)} "
+                f"of {total_events} recorded events"
+            )
+        )
 
         await interaction.response.send_message(
             embed=embed
