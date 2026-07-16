@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import discord
 
 from discord import app_commands
@@ -10,11 +12,256 @@ from database import (
 )
 
 
+DATA_STALE_AFTER_SECONDS = 20 * 60
+
+
 def format_event_type(event_type):
     if not event_type:
         return "Unknown Event"
 
     return event_type.replace("_", " ").strip().title()
+
+
+def parse_timestamp(value):
+    if not value:
+        return None
+
+    text = str(value).strip()
+
+    if not text:
+        return None
+
+    normalized = text.replace(
+        "Z",
+        "+00:00"
+    )
+
+    try:
+        parsed = datetime.fromisoformat(
+            normalized
+        )
+
+    except ValueError:
+        parsed = None
+
+        for timestamp_format in (
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y-%m-%d %H:%M:%S"
+        ):
+            try:
+                parsed = datetime.strptime(
+                    text,
+                    timestamp_format
+                )
+
+                break
+
+            except ValueError:
+                continue
+
+    if parsed is None:
+        return None
+
+    if parsed.tzinfo is None:
+        local_timezone = datetime.now().astimezone().tzinfo
+
+        parsed = parsed.replace(
+            tzinfo=local_timezone
+        )
+
+    return parsed.astimezone(
+        timezone.utc
+    )
+
+
+def get_age_seconds(timestamp_value):
+    parsed = parse_timestamp(
+        timestamp_value
+    )
+
+    if parsed is None:
+        return None
+
+    age = (
+        datetime.now(timezone.utc) - parsed
+    ).total_seconds()
+
+    return max(
+        0,
+        int(age)
+    )
+
+
+def format_duration(total_seconds):
+    if total_seconds is None:
+        return "Unknown"
+
+    seconds = max(
+        0,
+        int(total_seconds)
+    )
+
+    days, seconds = divmod(
+        seconds,
+        86400
+    )
+
+    hours, seconds = divmod(
+        seconds,
+        3600
+    )
+
+    minutes, seconds = divmod(
+        seconds,
+        60
+    )
+
+    parts = []
+
+    if days:
+        parts.append(
+            f"{days}d"
+        )
+
+    if hours:
+        parts.append(
+            f"{hours}h"
+        )
+
+    if minutes:
+        parts.append(
+            f"{minutes}m"
+        )
+
+    if not parts:
+        parts.append(
+            f"{seconds}s"
+        )
+
+    return " ".join(
+        parts[:3]
+    )
+
+
+def get_provider_status(cursor):
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'provider_status'
+        """
+    )
+
+    if cursor.fetchone()[0] == 0:
+        return None
+
+    cursor.execute(
+        """
+        SELECT
+            provider,
+            status,
+            checked_at,
+            aircraft_count,
+            retry_after_seconds,
+            detail
+        FROM provider_status
+        WHERE provider = 'OpenSky'
+        LIMIT 1
+        """
+    )
+
+    return cursor.fetchone()
+
+
+def build_provider_health(provider_status):
+    if not provider_status:
+        return {
+            "warning": True,
+            "headline": "⚪ No health record",
+            "details": (
+                "The updated datasource has not recorded an "
+                "OpenSky check yet."
+            )
+        }
+
+    status = (
+        provider_status[1]
+        or "unknown"
+    ).strip().lower()
+
+    checked_at = provider_status[2]
+    aircraft_count = provider_status[3] or 0
+    retry_after_seconds = provider_status[4]
+    detail = provider_status[5]
+
+    check_age = get_age_seconds(
+        checked_at
+    )
+
+    age_text = format_duration(
+        check_age
+    )
+
+    lines = [
+        f"**Last check:** {checked_at or 'Unknown'}",
+        f"**Check age:** {age_text}"
+    ]
+
+    if status == "healthy":
+        if (
+            check_age is not None
+            and check_age > DATA_STALE_AFTER_SECONDS
+        ):
+            headline = "⚠️ OpenSky check is stale"
+            warning = True
+
+        else:
+            headline = "✅ OpenSky healthy"
+            warning = False
+
+        lines.append(
+            f"**States returned:** {aircraft_count:,}"
+        )
+
+    elif status == "rate_limited":
+        headline = "⚠️ OpenSky rate limited"
+        warning = True
+
+        if retry_after_seconds is not None:
+            estimated_remaining = max(
+                0,
+                retry_after_seconds - (check_age or 0)
+            )
+
+            lines.append(
+                "**Cooldown reported:** "
+                f"{format_duration(retry_after_seconds)}"
+            )
+
+            lines.append(
+                "**Estimated remaining:** "
+                f"{format_duration(estimated_remaining)}"
+            )
+
+    elif status == "error":
+        headline = "❌ OpenSky request error"
+        warning = True
+
+    else:
+        headline = f"⚪ OpenSky status: {status}"
+        warning = True
+
+    if detail:
+        lines.append(
+            f"**Detail:** {detail}"
+        )
+
+    return {
+        "warning": warning,
+        "headline": headline,
+        "details": "\n".join(lines)
+    }
 
 
 class Aircraft(commands.Cog):
@@ -500,6 +747,14 @@ class Aircraft(commands.Cog):
         conn = get_connection()
         cursor = conn.cursor()
 
+        provider_status = get_provider_status(
+            cursor
+        )
+
+        provider_health = build_provider_health(
+            provider_status
+        )
+
         cursor.execute(
             """
             SELECT COUNT(*)
@@ -613,9 +868,26 @@ class Aircraft(commands.Cog):
 
         conn.close()
 
+        description = (
+            "Current fleet, provider health, and event "
+            "database summary"
+        )
+
+        if provider_health["warning"]:
+            description += (
+                "\n\n⚠️ **Live data may be unavailable "
+                "or stale.**"
+            )
+
         embed = discord.Embed(
             title="📊 FlightWatch Statistics",
-            description="Current fleet and event database summary"
+            description=description
+        )
+
+        embed.add_field(
+            name=provider_health["headline"],
+            value=provider_health["details"],
+            inline=False
         )
 
         embed.add_field(
@@ -691,13 +963,31 @@ class Aircraft(commands.Cog):
                 or "Unknown"
             )
 
+            state_age = get_age_seconds(
+                latest_state[3]
+            )
+
+            state_age_text = format_duration(
+                state_age
+            )
+
+            freshness_label = "Fresh"
+
+            if (
+                state_age is None
+                or state_age > DATA_STALE_AFTER_SECONDS
+            ):
+                freshness_label = "Stale"
+
             embed.add_field(
                 name="Newest Stored Aircraft State",
                 value=(
                     f"**Aircraft:** {registration}\n"
                     f"**Callsign:** {callsign}\n"
                     f"**Status:** {status}\n"
-                    f"**Last seen:** {last_seen}"
+                    f"**Last seen:** {last_seen}\n"
+                    f"**Age:** {state_age_text}\n"
+                    f"**Freshness:** {freshness_label}"
                 ),
                 inline=False
             )
