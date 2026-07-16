@@ -109,10 +109,8 @@ def parse_timestamp(value):
         return None
 
     if parsed.tzinfo is None:
-        local_timezone = datetime.now().astimezone().tzinfo
-
         parsed = parsed.replace(
-            tzinfo=local_timezone
+            tzinfo=timezone.utc
         )
 
     return parsed.astimezone(
