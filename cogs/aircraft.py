@@ -15,11 +15,57 @@ from database import (
 DATA_STALE_AFTER_SECONDS = 20 * 60
 
 
+EVENT_TYPE_ALIASES = {
+    "takeoff": "Takeoff",
+    "takeoff detected": "Takeoff",
+    "landing": "Landing",
+    "landing detected": "Landing",
+    "aircraft tracking started": "Tracking Started",
+    "tracking started": "Tracking Started"
+}
+
+
 def format_event_type(event_type):
     if not event_type:
         return "Unknown Event"
 
-    return event_type.replace("_", " ").strip().title()
+    normalized = " ".join(
+        str(event_type)
+        .replace("_", " ")
+        .replace("-", " ")
+        .strip()
+        .lower()
+        .split()
+    )
+
+    if not normalized:
+        return "Unknown Event"
+
+    return EVENT_TYPE_ALIASES.get(
+        normalized,
+        normalized.title()
+    )
+
+
+def aggregate_event_counts(event_rows):
+    totals = {}
+
+    for event_type, count in event_rows:
+        label = format_event_type(
+            event_type
+        )
+
+        totals[label] = (
+            totals.get(label, 0) + count
+        )
+
+    return sorted(
+        totals.items(),
+        key=lambda item: (
+            -item[1],
+            item[0]
+        )
+    )
 
 
 def parse_timestamp(value):
@@ -72,6 +118,34 @@ def parse_timestamp(value):
     return parsed.astimezone(
         timezone.utc
     )
+
+
+def format_discord_timestamp(
+    timestamp_value,
+    include_relative=True
+):
+    parsed = parse_timestamp(
+        timestamp_value
+    )
+
+    if parsed is None:
+        if timestamp_value:
+            return str(timestamp_value)
+
+        return "Unknown"
+
+    unix_timestamp = int(
+        parsed.timestamp()
+    )
+
+    formatted = f"<t:{unix_timestamp}:F>"
+
+    if include_relative:
+        formatted += (
+            f" (<t:{unix_timestamp}:R>)"
+        )
+
+    return formatted
 
 
 def get_age_seconds(timestamp_value):
@@ -204,7 +278,8 @@ def build_provider_health(provider_status):
     )
 
     lines = [
-        f"**Last check:** {checked_at or 'Unknown'}",
+        "**Last check:** "
+        f"{format_discord_timestamp(checked_at)}",
         f"**Check age:** {age_text}"
     ]
 
@@ -557,7 +632,9 @@ class Aircraft(commands.Cog):
 
         embed.add_field(
             name="Last Seen",
-            value=plane[11] or "Unknown",
+            value=format_discord_timestamp(
+                plane[11]
+            ),
             inline=False
         )
 
@@ -699,7 +776,9 @@ class Aircraft(commands.Cog):
             callsign = event[1] or "Unknown"
             latitude = event[2]
             longitude = event[3]
-            timestamp = event[4] or "Unknown"
+            timestamp = format_discord_timestamp(
+                event[4]
+            )
 
             details = [
                 f"**Recorded:** {timestamp}",
@@ -923,10 +1002,15 @@ class Aircraft(commands.Cog):
         if event_counts:
             event_lines = []
 
-            for event in event_counts:
+            normalized_event_counts = (
+                aggregate_event_counts(
+                    event_counts
+                )
+            )
+
+            for event_label, event_count in normalized_event_counts:
                 event_lines.append(
-                    f"**{format_event_type(event[0])}:** "
-                    f"{event[1]}"
+                    f"**{event_label}:** {event_count}"
                 )
 
             event_summary = "\n".join(
@@ -958,9 +1042,8 @@ class Aircraft(commands.Cog):
                 or "Unknown"
             )
 
-            last_seen = (
+            last_seen = format_discord_timestamp(
                 latest_state[3]
-                or "Unknown"
             )
 
             state_age = get_age_seconds(
@@ -1015,9 +1098,8 @@ class Aircraft(commands.Cog):
                 or "Unknown"
             )
 
-            timestamp = (
+            timestamp = format_discord_timestamp(
                 latest_event[4]
-                or "Unknown"
             )
 
             embed.add_field(
@@ -1114,7 +1196,9 @@ class Aircraft(commands.Cog):
             callsign = event[5] or "Unknown"
             latitude = event[6]
             longitude = event[7]
-            timestamp = event[8] or "Unknown"
+            timestamp = format_discord_timestamp(
+                event[8]
+            )
 
             aircraft_name = " ".join(
                 part
